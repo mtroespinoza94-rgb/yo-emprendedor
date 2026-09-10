@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yo Emprendedor</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:system-ui,sans-serif;background:#faf8f4;color:#1e211c;
+    margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .card{background:#fff;border:1px solid #ddd6c7;border-radius:14px;padding:2rem;
+    max-width:420px;width:100%;text-align:center;}
+  h1{color:#1f6f5c;margin-top:0;}
+  button{font:inherit;font-weight:600;padding:.8rem 1.4rem;border-radius:8px;border:none;
+    cursor:pointer;background:#1f6f5c;color:#fff;width:100%;margin-top:1rem;}
+  button:disabled{opacity:.5;cursor:default;}
+  #estado{margin-top:1rem;font-size:.9rem;color:#5a5f55;}
+  #panel-usuario{display:none;text-align:left;}
+  #panel-usuario code{background:#f1ede4;padding:.1em .4em;border-radius:4px;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Yo Emprendedor</h1>
+
+    <div id="panel-login">
+      <p>Inicia sesión con tu cuenta de Google para continuar.</p>
+      <button id="btn-google">Iniciar sesión con Google</button>
+    </div>
+
+    <div id="panel-usuario">
+      <p>Sesión iniciada como <strong id="txt-nombre"></strong> (<span id="txt-correo"></span>)</p>
+      <p>Tu código de referido: <code id="txt-codigo"></code></p>
+      <p>Plan actual: <span id="txt-plan"></span></p>
+      <button id="btn-logout">Cerrar sesión</button>
+    </div>
+
+    <div id="estado"></div>
+  </div>
+
+  <!-- Firebase (SDK compat, vía CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Configuración del proyecto "yo-emprendedor" (separado de Mi Catálogo)
+    const firebaseConfig = {
+      apiKey: "AIzaSyBpzH-f7iG8PgxA-z9f8sFzjh2GiwteCAA",
+      authDomain: "yo-emprendedor.firebaseapp.com",
+      projectId: "yo-emprendedor",
+      storageBucket: "yo-emprendedor.firebasestorage.app",
+      messagingSenderId: "752389806922",
+      appId: "1:752389806922:web:e713682d0b9c7ac7513fb3",
+      measurementId: "G-T86HE6RS69"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    const panelLogin = document.getElementById('panel-login');
+    const panelUsuario = document.getElementById('panel-usuario');
+    const estado = document.getElementById('estado');
+
+    function generarCodigoReferido(nombre, uid) {
+      const base = (nombre || 'USER').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6) || 'USER';
+      const sufijo = uid.slice(0, 4).toUpperCase();
+      return base + sufijo;
+    }
+
+    document.getElementById('btn-google').addEventListener('click', () => {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      estado.textContent = 'Abriendo inicio de sesión de Google...';
+      auth.signInWithPopup(provider).catch(err => {
+        estado.textContent = 'No se pudo iniciar sesión: ' + err.message;
+      });
+    });
+
+    document.getElementById('btn-logout').addEventListener('click', () => auth.signOut());
+
+    auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        panelLogin.style.display = 'block';
+        panelUsuario.style.display = 'none';
+        estado.textContent = '';
+        return;
+      }
+
+      estado.textContent = 'Verificando tu cuenta...';
+      const ref = db.collection('usuarios').doc(user.uid);
+      const snap = await ref.get();
+
+      if (!snap.exists) {
+        // Primer inicio de sesión: crear el "cajón" del usuario.
+        // TODO (fase 4): antes de llegar aquí, mostrar la pantalla de
+        // consentimiento (privacidad, términos, cookies) y solo crear
+        // este documento después de que la persona acepte.
+        const codigo = generarCodigoReferido(user.displayName, user.uid);
+
+        // El código de referido llega por la URL (?ref=ALGO), escrito por
+        // quien sea que compartió el enlace — nunca hay que confiar en él
+        // a ciegas. Aquí solo se limpia el formato (evita que alguien meta
+        // texto largo o símbolos raros); la validación real de que el
+        // código exista de verdad, y el crédito de días sin anuncios, los
+        // hace más adelante una Cloud Function del lado del servidor
+        // (fase 7) — nunca el navegador del propio usuario.
+        const params = new URLSearchParams(window.location.search);
+        const refCrudo = (params.get('ref') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+        const referidoPor = (refCrudo && refCrudo !== codigo) ? refCrudo : null;
+
+        await ref.set({
+          perfil: {
+            nombre: user.displayName || '',
+            correo: user.email || '',
+            foto: user.photoURL || '',
+            celular: '' // se completa en un paso posterior del registro
+          },
+          plan: 'gratis',
+          codigoReferido: codigo,
+          referidoPor: referidoPor,
+          diasSinAnunciosHasta: null,
+          rachaActividad: 0,
+          fechaRegistro: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      const datos = (await ref.get()).data();
+      document.getElementById('txt-nombre').textContent = datos.perfil.nombre;
+      document.getElementById('txt-correo').textContent = datos.perfil.correo;
+      document.getElementById('txt-codigo').textContent = datos.codigoReferido;
+      document.getElementById('txt-plan').textContent = datos.plan;
+
+      panelLogin.style.display = 'none';
+      panelUsuario.style.display = 'block';
+      estado.textContent = '';
+    });
+  </script>
+</body>
+</html>
