@@ -1,3 +1,10 @@
+// ============================================================
+// app.js — Autenticación y "sesión" del usuario.
+// Todo lo que es contenido de negocio (catálogo, clientes, ventas,
+// cobros, reportes) vive en app-negocio.js, para no mezclar la parte
+// de seguridad/login con la parte de funciones del día a día.
+// ============================================================
+
 // Configuración del proyecto "yo-emprendedor" (separado de Mi Catálogo)
 const firebaseConfig = {
   apiKey: "AIzaSyBpzH-f7iG8PgxA-z9f8sFzjh2GiwteCAA",
@@ -13,9 +20,18 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-const panelLogin = document.getElementById('panel-login');
-const panelUsuario = document.getElementById('panel-usuario');
-const estado = document.getElementById('estado');
+window.sesion = { uid: null, datos: null };
+
+const panelLoginWrap = document.getElementById('panel-login-wrap');
+const appDiv = document.getElementById('app');
+const estadoLogin = document.getElementById('estado-login');
+const mensajeGlobal = document.getElementById('mensaje-global');
+
+function mostrarMensaje(texto, esError) {
+  mensajeGlobal.textContent = texto || '';
+  mensajeGlobal.style.color = esError ? '#a33d2e' : '#5a5f55';
+  if (texto) setTimeout(() => { if (mensajeGlobal.textContent === texto) mensajeGlobal.textContent = ''; }, 5000);
+}
 
 function generarCodigoReferido(nombre, uid) {
   const base = (nombre || 'USER').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6) || 'USER';
@@ -25,9 +41,9 @@ function generarCodigoReferido(nombre, uid) {
 
 document.getElementById('btn-google').addEventListener('click', () => {
   const provider = new firebase.auth.GoogleAuthProvider();
-  estado.textContent = 'Abriendo inicio de sesión de Google...';
+  estadoLogin.textContent = 'Abriendo inicio de sesión de Google...';
   auth.signInWithPopup(provider).catch(err => {
-    estado.textContent = 'No se pudo iniciar sesión: ' + err.message;
+    estadoLogin.textContent = 'No se pudo iniciar sesión: ' + err.message;
   });
 });
 
@@ -35,57 +51,40 @@ document.getElementById('btn-logout').addEventListener('click', () => auth.signO
 
 auth.onAuthStateChanged(async (user) => {
   if (!user) {
-    panelLogin.style.display = 'block';
-    panelUsuario.style.display = 'none';
-    estado.textContent = '';
+    panelLoginWrap.style.display = 'flex';
+    appDiv.style.display = 'none';
+    estadoLogin.textContent = '';
+    window.sesion = { uid: null, datos: null };
     return;
   }
 
-  estado.textContent = 'Verificando tu cuenta...';
-  const ref = db.collection('usuarios').doc(user.uid);
-  const snap = await ref.get();
+  estadoLogin.textContent = 'Verificando tu cuenta...';
 
-  if (!snap.exists) {
-    // Primer inicio de sesión: crear el "cajón" del usuario.
-    // TODO (fase 4): antes de llegar aquí, mostrar la pantalla de
-    // consentimiento (privacidad, términos, cookies) y solo crear
-    // este documento después de que la persona acepte.
-    const codigo = generarCodigoReferido(user.displayName, user.uid);
+  try {
+    const ref = db.collection('usuarios').doc(user.uid);
+    const snap = await ref.get();
 
-    // El código de referido llega por la URL (?ref=ALGO), escrito por
-    // quien sea que compartió el enlace — nunca hay que confiar en él
-    // a ciegas. Aquí solo se limpia el formato (evita que alguien meta
-    // texto largo o símbolos raros); la validación real de que el
-    // código exista de verdad, y el crédito de días sin anuncios, los
-    // hace más adelante una Cloud Function del lado del servidor
-    // (fase 7) — nunca el navegador del propio usuario.
-    const params = new URLSearchParams(window.location.search);
-    const refCrudo = (params.get('ref') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
-    const referidoPor = (refCrudo && refCrudo !== codigo) ? refCrudo : null;
+    if (!snap.exists) {
+      const codigo = generarCodigoReferido(user.displayName, user.uid);
 
-    await ref.set({
-      perfil: {
-        nombre: user.displayName || '',
-        correo: user.email || '',
-        foto: user.photoURL || '',
-        celular: '' // se completa en un paso posterior del registro
-      },
-      plan: 'gratis',
-      codigoReferido: codigo,
-      referidoPor: referidoPor,
-      diasSinAnunciosHasta: null,
-      rachaActividad: 0,
-      fechaRegistro: firebase.firestore.FieldValue.serverTimestamp()
-    });
-  }
+      const params = new URLSearchParams(window.location.search);
+      const refCrudo = (params.get('ref') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+      const referidoPor = (refCrudo && refCrudo !== codigo) ? refCrudo : null;
 
-  const datos = (await ref.get()).data();
-  document.getElementById('txt-nombre').textContent = datos.perfil.nombre;
-  document.getElementById('txt-correo').textContent = datos.perfil.correo;
-  document.getElementById('txt-codigo').textContent = datos.codigoReferido;
-  document.getElementById('txt-plan').textContent = datos.plan;
+      await ref.set({
+        perfil: {
+          nombre: user.displayName || '',
+          correo: user.email || '',
+          foto: user.photoURL || '',
+          celular: ''
+        },
+        plan: 'gratis',
+        codigoReferido: codigo,
+        referidoPor: referidoPor,
+        diasSinAnunciosHasta: null,
+        rachaActividad: 0,
+        fechaRegistro: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
 
-  panelLogin.style.display = 'none';
-  panelUsuario.style.display = 'block';
-  estado.textContent = '';
-});
+    const datos =
