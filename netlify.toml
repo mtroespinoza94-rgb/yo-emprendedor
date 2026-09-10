@@ -1,5 +1,5 @@
 [build]
-  publish = "public"
+  publish = "."
 
 # Cabeceras de seguridad para todas las páginas del sitio.
 # Cambia solo si agregas un servicio nuevo que necesite otro dominio
