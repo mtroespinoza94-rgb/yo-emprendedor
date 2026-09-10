@@ -1,0 +1,17 @@
+[build]
+  publish = "public"
+
+# Cabeceras de seguridad para todas las páginas del sitio.
+# Cambia solo si agregas un servicio nuevo que necesite otro dominio
+# (por ejemplo, si más adelante agregas AdMob web o Google Analytics,
+# hay que sumar esos dominios en connect-src / script-src, o Firebase
+# dejará de funcionar de forma silenciosa y confusa).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; frame-src https://yo-emprendedor.firebaseapp.com https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'"
