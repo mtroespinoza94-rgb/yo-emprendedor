@@ -42,61 +42,50 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   estado.textContent = 'Verificando tu cuenta...';
+  const ref = db.collection('usuarios').doc(user.uid);
+  const snap = await ref.get();
 
-  // Todo este bloque va dentro de un try/catch a propósito: si Firestore
-  // rechaza la lectura o escritura (por ejemplo porque todavía no existe
-  // la base de datos, o porque las reglas de seguridad no están puestas
-  // en Firebase Console), antes esto se quedaba "colgado" en pantalla sin
-  // avisar nada. Ahora, si algo falla, se ve el motivo exacto abajo del
-  // botón — así se puede diagnosticar sin adivinar.
-  try {
-    const ref = db.collection('usuarios').doc(user.uid);
-    const snap = await ref.get();
+  if (!snap.exists) {
+    // Primer inicio de sesión: crear el "cajón" del usuario.
+    // TODO (fase 4): antes de llegar aquí, mostrar la pantalla de
+    // consentimiento (privacidad, términos, cookies) y solo crear
+    // este documento después de que la persona acepte.
+    const codigo = generarCodigoReferido(user.displayName, user.uid);
 
-    if (!snap.exists) {
-      // Primer inicio de sesión: crear el "cajón" del usuario.
-      // TODO (fase 4): antes de llegar aquí, mostrar la pantalla de
-      // consentimiento (privacidad, términos, cookies) y solo crear
-      // este documento después de que la persona acepte.
-      const codigo = generarCodigoReferido(user.displayName, user.uid);
+    // El código de referido llega por la URL (?ref=ALGO), escrito por
+    // quien sea que compartió el enlace — nunca hay que confiar en él
+    // a ciegas. Aquí solo se limpia el formato (evita que alguien meta
+    // texto largo o símbolos raros); la validación real de que el
+    // código exista de verdad, y el crédito de días sin anuncios, los
+    // hace más adelante una Cloud Function del lado del servidor
+    // (fase 7) — nunca el navegador del propio usuario.
+    const params = new URLSearchParams(window.location.search);
+    const refCrudo = (params.get('ref') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+    const referidoPor = (refCrudo && refCrudo !== codigo) ? refCrudo : null;
 
-      // El código de referido llega por la URL (?ref=ALGO), escrito por
-      // quien sea que compartió el enlace — nunca hay que confiar en él
-      // a ciegas. Aquí solo se limpia el formato (evita que alguien meta
-      // texto largo o símbolos raros); la validación real de que el
-      // código exista de verdad, y el crédito de días sin anuncios, los
-      // hace más adelante una Cloud Function del lado del servidor
-      // (fase 7) — nunca el navegador del propio usuario.
-      const params = new URLSearchParams(window.location.search);
-      const refCrudo = (params.get('ref') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
-      const referidoPor = (refCrudo && refCrudo !== codigo) ? refCrudo : null;
-
-      await ref.set({
-        perfil: {
-          nombre: user.displayName || '',
-          correo: user.email || '',
-          foto: user.photoURL || '',
-          celular: '' // se completa en un paso posterior del registro
-        },
-        plan: 'gratis',
-        codigoReferido: codigo,
-        referidoPor: referidoPor,
-        diasSinAnunciosHasta: null,
-        rachaActividad: 0,
-        fechaRegistro: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    }
-
-    const datos = (await ref.get()).data();
-    document.getElementById('txt-nombre').textContent = datos.perfil.nombre;
-    document.getElementById('txt-correo').textContent = datos.perfil.correo;
-    document.getElementById('txt-codigo').textContent = datos.codigoReferido;
-    document.getElementById('txt-plan').textContent = datos.plan;
-
-    panelLogin.style.display = 'none';
-    panelUsuario.style.display = 'block';
-    estado.textContent = '';
-  } catch (err) {
-    estado.textContent = 'No se pudo verificar tu cuenta: ' + err.message;
+    await ref.set({
+      perfil: {
+        nombre: user.displayName || '',
+        correo: user.email || '',
+        foto: user.photoURL || '',
+        celular: '' // se completa en un paso posterior del registro
+      },
+      plan: 'gratis',
+      codigoReferido: codigo,
+      referidoPor: referidoPor,
+      diasSinAnunciosHasta: null,
+      rachaActividad: 0,
+      fechaRegistro: firebase.firestore.FieldValue.serverTimestamp()
+    });
   }
+
+  const datos = (await ref.get()).data();
+  document.getElementById('txt-nombre').textContent = datos.perfil.nombre;
+  document.getElementById('txt-correo').textContent = datos.perfil.correo;
+  document.getElementById('txt-codigo').textContent = datos.codigoReferido;
+  document.getElementById('txt-plan').textContent = datos.plan;
+
+  panelLogin.style.display = 'none';
+  panelUsuario.style.display = 'block';
+  estado.textContent = '';
 });
